@@ -1,0 +1,97 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debugger: All code",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Debugger: Current File (petra, big train)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--problem",
+                "petra",
+                "--use_wandb",
+                "--baseline", 
+                "rollout",
+                "--batch_size",
+                "512",
+                "--epoch_size",
+                "65536", // 512 * 128
+                "--graph_size",
+                "15",
+                "--veh_num",
+                "3",
+                "--embedding_dim",
+                "64",
+                "--hidden_dim",
+                "64",
+                "--n_encode_layers",
+                "4",
+                "--n_heads",
+                "4",
+                // "--consumption_reward",
+                // "0.0",
+                "--fulfilment",
+                "node_demand",
+                // "vehicle_capacity",
+                "--seed",
+                "123456",
+                // PETRA
+                // "--multi_trip",
+            ]
+        },
+        {
+            "name": "Debugger: Current File (petra, test)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--problem",
+                "petra",
+                // "--use_wandb",
+                "--baseline", 
+                "rollout",
+                "--batch_size",
+                "64",
+                "--epoch_size",
+                "1024",
+                "--graph_size",
+                "10",
+                "--veh_num",
+                "2",
+                "--embedding_dim",
+                "32",
+                "--hidden_dim",
+                "32",
+                "--n_encode_layers",
+                "2",
+                "--n_heads",
+                "2",
+                // "--consumption_reward",
+                // "0.0",
+                "--fulfilment",
+                "node_demand",
+                // "vehicle_capacity",
+                "--seed",
+                "123456",
+                // PETRA
+                // "--multi_trip",
+            ]
+        }
+    ]
+}

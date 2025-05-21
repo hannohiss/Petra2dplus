@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+
+# macOS
+.DS_Store
+
+# Pixi/Conda environments
+.pixi/
+
+# Output and generated files
+outputs/
+frames/
+gif_outputs/
+
+# Project-specific
+nets/__pycache__/
+problems/__pycache__/
+problems/petra/__pycache__/
+utils/__pycache__/
