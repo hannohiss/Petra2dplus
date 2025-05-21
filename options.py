@@ -82,6 +82,7 @@ def get_options(args=None):
 
     # Petra
     parser.add_argument('--use_data_adapter', action='store_true', help='Enable PETRA')
+    parser.add_argument('--date_start', type=str, default='2025-02-18', help='Start date for the problem')
     parser.add_argument('--max_time', type=float, default=480,
                         help='Maximum allowed time for the problem')
     parser.add_argument('--cost_per_km', type=float, default=0.57 + 0.812,  # fuel + LSVA
