@@ -81,6 +81,7 @@ def get_options(args=None):
     parser.add_argument('--no_progress_bar', action='store_true', help='Disable progress bar')
 
     # Petra
+    parser.add_argument('--use_data_adapter', action='store_true', help='Enable PETRA')
     parser.add_argument('--max_time', type=float, default=480,
                         help='Maximum allowed time for the problem')
     parser.add_argument('--cost_per_km', type=float, default=0.57 + 0.812,  # fuel + LSVA
@@ -158,4 +159,5 @@ def get_options(args=None):
     assert 0 <= opts.consumption_reward <= 1, "Cost vs reward ratio must be between 0 and 1!"
     assert opts.fulfilment in ['node_demand', 'vehicle_capacity'], \
         "Fulfilment type must be either 'node_demand' or 'vehicle_capacity'!"
+    assert not opts.use_data_adapter, "Data adapter is not supported for PETRA"
     return opts

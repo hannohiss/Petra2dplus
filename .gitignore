@@ -17,3 +17,6 @@ nets/__pycache__/
 problems/__pycache__/
 problems/petra/__pycache__/
 utils/__pycache__/
+
+# src
+src/*

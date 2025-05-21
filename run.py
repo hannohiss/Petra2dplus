@@ -20,6 +20,7 @@ from nets.attention_model import AttentionModel
 from utils import torch_load_cpu, load_problem
 import warnings
 
+from src.generator_for_petra2dplus import generator_for_petra2dplus
 
 def run(opts):
 
@@ -68,11 +69,14 @@ def run(opts):
         selected_vehicles.append(vehicle_candidates[i % len(vehicle_candidates)])
     opts.vehicles = selected_vehicles
 
-    generator = PetraGeneratorRandom(
-        opts,
-        num_loc=opts.graph_size,
-        vehicles=selected_vehicles,
-    )
+    if opts.use_data_adapter:
+        generator, opts = generator_for_petra2dplus(opts)
+    else:
+        generator = PetraGeneratorRandom(
+            opts,
+            num_loc=opts.graph_size,
+            vehicles=selected_vehicles,
+        )
 
     # Figure out what's the problem
     if opts.problem == "petra":
