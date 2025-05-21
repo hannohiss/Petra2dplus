@@ -70,7 +70,8 @@ def run(opts):
     opts.vehicles = selected_vehicles
 
     if opts.use_data_adapter:
-        generator, opts = generator_for_petra2dplus(opts)
+        generator, vehicles_ = generator_for_petra2dplus(opts)
+        opts.vehicles = vehicles_
     else:
         generator = PetraGeneratorRandom(
             opts,
