@@ -315,7 +315,12 @@ class PetraEnv:
         # cost vs reward
         cost = veh_cost + depot_cost + node_cost * self.consumption_reward - revenue
 
-        return cost
+        return cost, {
+            'node_cost': (node_cost*self.consumption_reward).detach(),
+            'depot_cost': depot_cost.detach(),
+            'veh_cost': veh_cost.detach(),
+            'revenue': revenue.detach()
+        }
 
     @classmethod
     def from_data(cls, loc, demand, depot, capacity, matrix_min, matrix_km):

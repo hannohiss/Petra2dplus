@@ -36,6 +36,7 @@ def run(opts):
         )
 
     # Pretty print the run args
+    opts.steps = opts.n_epochs * (opts.epoch_size // opts.batch_size)
     pp.pprint(vars(opts))
 
     # Set the random seed
@@ -189,7 +190,7 @@ def run(opts):
     torch.autograd.set_detect_anomaly(True)
 
     if opts.eval_only:
-        validate(model, val_dataset, opts)
+        validate(model, val_dataset, opts, step=opts.steps + 1)
     else:
         print("Start training...")
         for epoch in range(opts.epoch_start, opts.epoch_start + opts.n_epochs):
@@ -212,7 +213,7 @@ def run(opts):
                 veh_num=opts.veh_num,
                 num_samples=opts.val_size), 
             opts, 
-            step=opts.n_epochs * (opts.epoch_size // opts.batch_size)
+            step=opts.steps + 1
         )
 
         # Log final validation results to wandb

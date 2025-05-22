@@ -11,8 +11,8 @@ standard_colors = ['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 
 
 
 # Create a dedicated directory for GIFs
-def ensure_gif_dir():
-    gif_dir = os.path.join(os.getcwd(), "gif_outputs")
+def ensure_gif_dir(opts):
+    gif_dir = os.path.join(os.getcwd(), opts.save_dir, "gif_outputs")
     os.makedirs(gif_dir, exist_ok=True)
     return gif_dir
 
@@ -122,7 +122,7 @@ def render(
     os.makedirs(frames_dir, exist_ok=True)
     
     # Create GIF output directory
-    gif_dir = ensure_gif_dir()
+    gif_dir = ensure_gif_dir(opts)
 
     _, ax = plt.subplots(dpi=100, figsize=(12, 12))
 

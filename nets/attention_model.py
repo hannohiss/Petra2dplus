@@ -210,13 +210,13 @@ class AttentionModel(nn.Module):
             step += 1
 
         # get the final cost
-        cost = env.get_cost(self.obj)
+        cost, cost_info = env.get_cost(self.obj)
         ll = torch.stack(ll, 1)  # bs,step
         pi = torch.stack(pi, 1)  # bs,step
         veh_list = torch.stack(veh_list, 1)  # bs,step
         fulfilments = torch.stack(fulfilments, 1)
         infos = torch.stack([torch.stack(inner, dim=0).squeeze(-1) for inner in infos], dim=0).permute(1, 2, 0)
-        return ll.sum(1),pi,veh_list,fulfilments,cost,infos
+        return ll.sum(1),pi,veh_list,fulfilments,cost,{'inner_info': infos,'cost_info': cost_info}
 
     def decoder(self,q_em,k_em,mask=None):
         '''

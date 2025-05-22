@@ -21,7 +21,7 @@ def validate(model, dataset, opts, step=0):
     # Validate
     print('Validating...')
     # multi batch
-    cost = rollout(model, dataset, opts)
+    cost, infos = rollout(model, dataset, opts)
     avg_cost = cost.mean()
     print('Validation overall avg_cost: {} +- {}'.format(
         avg_cost, torch.std(cost) / math.sqrt(len(cost))))
@@ -30,14 +30,32 @@ def validate(model, dataset, opts, step=0):
     if hasattr(opts, 'use_wandb') and opts.use_wandb and wandb.run is not None:
         wandb.log({
             'validation/avg_cost': avg_cost.item(),
-            'validation/std_cost': torch.std(cost).item()
-        })
+            'validation/std_cost': torch.std(cost).item() / math.sqrt(len(cost))
+        }, step=step)
+
+    # info is a list of dicts
+    # each dict has keys: inner_info, cost_info
+    #    inner_info is a list of dicts
+    #    cost_info is a list of dicts with keys node_cost, depot_cost, veh_cost, revenue
+    num_infos = len(infos)
+    keys = infos[0]['cost_info'].keys()
+    data = {key: [] for key in keys}
+    for i in range(num_infos):
+        for key in keys:
+            data[key].append(infos[i]['cost_info'][key].mean().item())
+    for key in keys:
+        wandb.log({
+            f'validation/{key}_mean': torch.tensor(data[key]).mean().item(),
+            f'validation/{key}_std': torch.tensor(data[key]).std().item()
+        }, step=step)
+
 
     # Generate GIFs and log them to wandb
     try:
         for i, bat in enumerate(DataLoader(dataset, batch_size=1)):
             with torch.no_grad():
-                cost, log_likelihood, pi, veh_list, fulfilments, infos = model(bat, return_pi=True)
+                cost, log_likelihood, pi, veh_list, fulfilments, info_dict = model(bat, return_pi=True)
+                infos = info_dict['inner_info']
             gif_path = make_gif(bat, pi, veh_list, fulfilments, infos, opts, step, suffix=f"_val_{i}")
             if hasattr(opts, 'use_wandb') and opts.use_wandb and wandb.run is not None:
                 if os.path.exists(gif_path):
@@ -53,7 +71,7 @@ def validate(model, dataset, opts, step=0):
                     'validation/beta_std': infos[2].std().item() if infos is not None else None,
                 }, step=step)
 
-            if i >= 2:  # Limit to 2 GIFs
+            if i >= opts.val_gif_limit:
                 break
     except Exception as e:
         print(f"Error generating or logging GIF: {e}")
@@ -70,15 +88,18 @@ def rollout(model, dataset, opts):
     def eval_model_bat(bat):
         # do not need backpropogation
         with torch.no_grad():
-            cost, _ = model(move_to(bat, opts.device))
-        return cost.data.cpu()
+            cost, ll, pi, veh_list, fulfilments, info_dict = model(move_to(bat, opts.device), return_pi=True)
+            infos = info_dict['inner_info']
+        return (cost.data.cpu(), info_dict)
 
     # tqdm is a function to show the progress bar
-    return torch.cat([
+    costs_collection = [
         eval_model_bat(bat)
         for bat
         in tqdm(DataLoader(dataset, batch_size=opts.eval_batch_size), disable=opts.no_progress_bar)
-    ], 0)
+    ]
+
+    return torch.cat([costs[0] for costs in costs_collection], 0), [costs[1] for costs in costs_collection]
 
 
 def clip_grad_norms(param_groups, max_norm=math.inf):
@@ -209,7 +230,7 @@ def train_batch(
     # Evaluate proposed model, get costs and log probabilities
     # cost, log_likelihood, log_veh = model(x)  # both [batch_size]
     # cost, log_likelihood = model(x)  # both [batch_size]
-    cost, log_likelihood, pi, veh_list, fulfilments, infos = model(x, return_pi=True)  # both [batch_size]
+    cost, log_likelihood, pi, veh_list, fulfilments, info_dict = model(x, return_pi=True)  # both [batch_size]
 
     # Evaluate baseline, get baseline loss if any (only for critic)
     bl_val, bl_loss = baseline.eval(x, cost) if bl_val is None else (bl_val, 0)
@@ -234,7 +255,7 @@ def train_batch(
     # Logging
     if step % int(opts.log_step) == 0:
         log_values(cost, grad_norms, epoch, batch_id, step,
-                   log_likelihood, reinforce_loss, bl_loss, infos, tb_logger, opts)
+                   log_likelihood, reinforce_loss, bl_loss, info_dict['inner_info'], tb_logger, opts)
         if hasattr(opts, 'use_wandb') and opts.use_wandb and wandb.run is not None:
             depot_visits = (pi == 0).sum(-1).float()
             wandb.log({

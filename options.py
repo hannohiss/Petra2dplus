@@ -92,7 +92,7 @@ def get_options(args=None):
                         help='Cost per minute')
     parser.add_argument('--petra_reward', type=str, default='critical_time_cost',
                         help='Reward type for the problem, "consumption_reward" or "critical_time_cost"')
-    parser.add_argument('--consumption_reward', type=float, default=0.2, help='Cost vs reward ratio')
+    parser.add_argument('--consumption_reward', type=float, default=0.5, help='Cost vs reward ratio')
     # critical time cost: https://www.desmos.com/calculator/wt8y7q0cxr
     parser.add_argument('--critical_time_cost_alpha', type=float, default=1500,
                         help='Abs weight for the critical time cost')
@@ -143,6 +143,7 @@ def get_options(args=None):
     parser.add_argument('--use_wandb', action='store_true', help='Enable Weights & Biases logging (default: False)')
     parser.add_argument('--wandb_project', type=str, default='2d-petra', help='Wandb project name')
     parser.add_argument('--wandb_entity', type=str, default=None, help='Wandb entity name')
+    parser.add_argument('--val_gif_limit', type=int, default=2, help='Limit the number of validation GIFs to log')
 
     opts = parser.parse_args(args)
 

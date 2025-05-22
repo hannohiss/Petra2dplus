@@ -20,3 +20,6 @@ utils/__pycache__/
 
 # src
 src/*
+
+# wandb
+wandb/*

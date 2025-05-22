@@ -31,7 +31,7 @@ def load_petra_problem(name, **kwargs):
 
 
 def torch_load_cpu(load_path):
-    return torch.load(load_path, map_location=lambda storage, loc: storage)  # Load on CPU
+    return torch.load(load_path, weights_only=False, map_location=lambda storage, loc: storage)  # Load on CPU
 
 
 def move_to(var, device):
