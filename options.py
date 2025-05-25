@@ -34,6 +34,10 @@ def get_options(args=None):
     parser.add_argument('--normalization', default='batch', help="Normalization type, 'batch' (default) or 'instance'")
 
     # Training
+    parser.add_argument('--use_grpo', action='store_true', help='Use GRPO')
+    parser.add_argument('--grpo_groupsize', type=int, default=4, help='Group size for GRPO')
+    parser.add_argument('--clip_epsilon', type=float, default=0.2, help='Clip epsilon for GRPO')
+    parser.add_argument('--kl_coef', type=float, default=0.01, help='KL coefficient for GRPO')
     parser.add_argument('--lr_model', type=float, default=1e-4, help="Set the learning rate for the actor network")
     parser.add_argument('--lr_critic', type=float, default=1e-4, help="Set the learning rate for the critic network")
     parser.add_argument('--lr_decay', type=float, default=0.995, help='Learning rate decay per epoch')
@@ -47,7 +51,7 @@ def get_options(args=None):
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--exp_beta', type=float, default=0.8,
                         help='Exponential moving average baseline decay (default 0.8)')
-    parser.add_argument('--baseline', default='rollout',
+    parser.add_argument('--baseline', default=None,
                         help="Baseline to use: 'rollout', 'critic' or 'exponential'. Defaults to no baseline.")
     parser.add_argument('--bl_alpha', type=float, default=0.05,
                         help='Significance in the t-test for updating rollout baseline')
@@ -110,7 +114,7 @@ def get_options(args=None):
                         help='Enable multi-trip for the problem')
     
     # Additional Petra parameters
-    parser.add_argument('--demand_max', type=float, default=400000, 
+    parser.add_argument('--demand_max', type=float, default=80_000, 
                         help='Maximum demand value')
     parser.add_argument('--coordinates_noise_std', type=float, default=0.1,
                         help='Standard deviation of noise added to coordinates')
@@ -120,13 +124,13 @@ def get_options(args=None):
                         help='Minimum time until critical time')
     parser.add_argument('--max_critical_time', type=int, default=40,
                         help='Maximum time until critical time')
-    parser.add_argument('--demand_mu', type=float, default=50000,
+    parser.add_argument('--demand_mu', type=float, default=30_000,
                         help='Mean of demand distribution')
-    parser.add_argument('--demand_sigma', type=float, default=1.0,
+    parser.add_argument('--demand_sigma', type=float, default=0.8,
                         help='Standard deviation of demand distribution')
-    parser.add_argument('--ttr_mu', type=float, default=5,
+    parser.add_argument('--ttr_mu', type=float, default=7,
                         help='Mean of time-to-refill distribution')
-    parser.add_argument('--ttr_sigma', type=float, default=1,
+    parser.add_argument('--ttr_sigma', type=float, default=0.5,
                         help='Standard deviation of time-to-refill distribution')
     parser.add_argument('--km_mu', type=float, default=90,
                         help='Mean of distance distribution')
@@ -162,5 +166,6 @@ def get_options(args=None):
     assert 0 <= opts.consumption_reward <= 1, "Cost vs reward ratio must be between 0 and 1!"
     assert opts.fulfilment in ['node_demand', 'vehicle_capacity'], \
         "Fulfilment type must be either 'node_demand' or 'vehicle_capacity'!"
-    assert not opts.use_data_adapter, "Data adapter is not supported for PETRA"
+    assert not opts.use_data_adapter, "Data adapter is not supported for PETRA" 
+    assert (opts.use_grpo and opts.baseline is None) or not opts.use_grpo, "GRPO is only supported with no baseline"
     return opts

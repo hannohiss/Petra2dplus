@@ -88,7 +88,7 @@
                 "--seed",
                 "123456",
                 // PETRA
-                // "--multi_trip",
+                "--multi_trip",
             ]
         },
         {
@@ -99,7 +99,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--load_path",
-                "outputs/petra_v3_15/run_20250522T011717/final_model_epoch_50.pt",
+                "outputs/petra_v3_15/run_20250524T183200/final_model_epoch_50.pt",
                 "--eval_only",
                 "--problem",
                 "petra",
@@ -119,7 +119,52 @@
                 "node_demand",
                 "--val_gif_limit",
                 "10",
+                // "--use_wandb",
+            ]
+        },
+        {
+            "name": "Debugger: Current File (grpo vs rollout reinforce)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--problem",
+                "petra",
                 "--use_wandb",
+                "--graph_size",
+                "15",
+                "--veh_num",
+                "3",
+                "--embedding_dim",
+                "64",
+                "--hidden_dim",
+                "64",
+                "--n_encode_layers",
+                "4",
+                "--n_heads",
+                "4",
+                "--consumption_reward",
+                "1",
+                "--fulfilment",
+                "node_demand",
+                "--seed",
+                "123456",
+                // ROLLOUT REINFORCE
+                // "--baseline", 
+                // "rollout",
+                // "--batch_size",
+                // "512",
+                // "--epoch_size",
+                // "131072", // 512 * 16 * 16 (grpo groupsize * batch size)
+                // GRPO
+                "--use_grpo",
+                "--grpo_groupsize",
+                "16",
+                "--batch_size",
+                "32", // 16 * 32 = 512
+                "--epoch_size",
+                "8192", // 512 * 16
             ]
         }
     ]

@@ -36,6 +36,7 @@ class PetraGeneratorRandom():
         self.vehicle_capacity = torch.tensor(
             [vehicle["load"] for vehicle in vehicles], dtype=torch.float32
         )
+        self.max_vehicle_capacity = self.vehicle_capacity.max()
         
         # Initialize parameters from opts
         self.cost_per_km = opts.cost_per_km
@@ -97,20 +98,21 @@ class PetraGeneratorRandom():
         adjacency_km[:, diag_indices, diag_indices] = 0.0
 
         # Step 5: Generate node demands
-        demand_dist = torch.distributions.LogNormal(torch.log(torch.tensor(self.demand_mu)), self.demand_sigma)
-        node_max_capacity = demand_dist.sample((*batch_size, self.num_loc)).clamp(min=self.demand_max//20, max=self.demand_max)
-        node_demands = demand_dist.sample((*batch_size, self.num_loc)).clamp(min=torch.ones_like(node_max_capacity)*self.demand_max//20, max=node_max_capacity)
+        demand_dist = LogNormalDistribution(math.log(self.demand_mu), self.demand_sigma)
+        node_demands = demand_dist.sample((*batch_size, self.num_loc)).clamp(max=self.demand_max)
         node_demands[batch_ids, self.depot_idx] = 0.0 # depot has no demand
 
         # step 6: Generate node_critical_time
-        ttr_dist = torch.distributions.LogNormal(torch.log(torch.tensor(self.ttr_mu)), self.ttr_sigma)
+        ttr_dist = LogNormalDistribution(math.log(self.ttr_mu), self.ttr_sigma)
         node_critical_time = ttr_dist.sample((*batch_size, self.num_loc)).clamp(min=self.min_critical_time, max=self.max_critical_time)
+        # make sure that the node_critical_time is at least 2 days of the demand
+        node_critical_time = node_critical_time.clamp(min=node_demands * 2 / self.max_vehicle_capacity)
         node_critical_time[batch_ids, self.depot_idx] = self.max_critical_time # math.inf weird bug
 
         # compute node_consumption_rate
         node_consumption_rate = node_demands / node_critical_time # [B, N]
 
-        # demands should not be satisfiable with the given vehicle capacity
+        # demands should not be satisfiable with the given total vehicle capacity
         mask = (node_demands.sum(dim=-1) <= self.vehicle_capacity.sum())
         if mask.any():
             add = mask * ((self.vehicle_capacity.sum()-node_demands.sum(dim=-1).min())/self.num_vehicles+1e-3)
@@ -133,3 +135,12 @@ class PetraGeneratorRandom():
             },
             batch_size=batch_size,
         )
+    
+
+class LogNormalDistribution():
+    def __init__(self, mu, sigma):
+        self.mu = mu
+        self.sigma = sigma
+
+    def sample(self, size):
+        return torch.exp(torch.randn(size) * self.sigma + self.mu)

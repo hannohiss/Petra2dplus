@@ -1,4 +1,6 @@
+import copy
 import os
+import pprint as pp
 import time
 from tqdm import tqdm
 import torch
@@ -21,17 +23,53 @@ def validate(model, dataset, opts, step=0):
     # Validate
     print('Validating...')
     # multi batch
-    cost, infos = rollout(model, dataset, opts)
+    cost, infos, actions = rollout(model, dataset, opts)
     avg_cost = cost.mean()
     print('Validation overall avg_cost: {} +- {}'.format(
         avg_cost, torch.std(cost) / math.sqrt(len(cost))))
+    
+
+    # calculate KPIs
+    episode_lengths = [action['node'].size(0) for action in actions]
+    min_episode_len = min(episode_lengths)
+    max_episode_len = max(episode_lengths)
+    assert min_episode_len == max_episode_len, "All episode lengths must be the same, this might be due to batching (try increasing batch size)"
+    node_actions = torch.stack([action['node'] for action in actions], dim=0)
+    veh_actions = torch.stack([action['veh'] for action in actions], dim=0)
+    fulfilment_actions = torch.stack([action['fulfilment'] for action in actions], dim=0)
+    all_actions = torch.stack([node_actions, veh_actions, fulfilment_actions], dim=1)
+
+    # KPIs: 1. Trip to drop ratio 2. Trip to drop ratio per vehicle type
+    num_vehicles = len(opts.vehicles)
+    trips_home = torch.where((node_actions == 0) & (veh_actions == 0), 0.0, 1.0)
+    trips_home_vehicles = torch.where((node_actions == 0) & (veh_actions == 0), -1, veh_actions)
+    stops_per_trip_ratio_veh = []
+    for i in range(num_vehicles):
+        trips_to_drop = torch.where(trips_home_vehicles == i, 1.0, 0.0)
+        stops_per_trip_ratio_veh.append(trips_to_drop.sum(dim=1).mean(dim=0) - (0 if i == 0 else 1))
+
+    vehicles = [{**veh, 'stops_per_trip': ratio, 'drop_per_stop': veh['load'] / ratio} for veh, ratio in zip(opts.vehicles, stops_per_trip_ratio_veh)]
+
+    trips_to_drop = trips_home.sum(dim=1) - num_vehicles
+    stops_per_trip_ratio = trips_to_drop.mean() / num_vehicles
+    
+    # average drop-off
+
+    stats = {
+        'validation/avg_cost': avg_cost.item(),
+        'validation/std_cost': torch.std(cost).item() / math.sqrt(len(cost)),
+        'validation/stops_per_trip_ratio': stops_per_trip_ratio.item(),
+    }
+    for i, veh in enumerate(vehicles):
+        stats[f'validation/stops_per_trip/vehicle_{i}'] = veh['stops_per_trip'].item()
+        stats[f'validation/drop_per_stop/vehicle_{i}'] = veh['drop_per_stop'].item()
+        stats[f'validation/load/vehicle_{i}'] = veh['load']
 
     # Log validation metrics to wandb
     if hasattr(opts, 'use_wandb') and opts.use_wandb and wandb.run is not None:
-        wandb.log({
-            'validation/avg_cost': avg_cost.item(),
-            'validation/std_cost': torch.std(cost).item() / math.sqrt(len(cost))
-        }, step=step)
+        wandb.log(stats, step=step)
+    else:
+        pp.pprint(stats)
 
     # info is a list of dicts
     # each dict has keys: inner_info, cost_info
@@ -43,39 +81,39 @@ def validate(model, dataset, opts, step=0):
     for i in range(num_infos):
         for key in keys:
             data[key].append(infos[i]['cost_info'][key].mean().item())
-    for key in keys:
-        wandb.log({
-            f'validation/{key}_mean': torch.tensor(data[key]).mean().item(),
-            f'validation/{key}_std': torch.tensor(data[key]).std().item()
-        }, step=step)
+    if hasattr(opts, 'use_wandb') and opts.use_wandb and wandb.run is not None:
+        for key in keys:
+            wandb.log({
+                f'validation/{key}_mean': torch.tensor(data[key]).mean().item(),
+                f'validation/{key}_std': torch.tensor(data[key]).std().item()
+            }, step=step)
 
 
     # Generate GIFs and log them to wandb
-    try:
-        for i, bat in enumerate(DataLoader(dataset, batch_size=1)):
-            with torch.no_grad():
-                cost, log_likelihood, pi, veh_list, fulfilments, info_dict = model(bat, return_pi=True)
-                infos = info_dict['inner_info']
+    for i, bat in enumerate(DataLoader(dataset, batch_size=1)):
+        with torch.no_grad():
+            cost, log_likelihood, pi, veh_list, fulfilments, info_dict = model(bat, return_pi=True)
+            infos = info_dict['inner_info']
+        try:
             gif_path = make_gif(bat, pi, veh_list, fulfilments, infos, opts, step, suffix=f"_val_{i}")
-            if hasattr(opts, 'use_wandb') and opts.use_wandb and wandb.run is not None:
-                if os.path.exists(gif_path):
-                    wandb.log({"validation/gif": wandb.Video(gif_path, format="gif")}, step=step)
-                
-                # log info = [lop_p_fulfilment.detach(), alpha.detach(), beta.detach()]
-                wandb.log({
-                    'validation/fulfilment': fulfilments.mean().item() if infos is not None else None,
-                    'validation/nll_fulfilment': -infos[0].mean().item() if infos is not None else None,
-                    'validation/alpha_mean': infos[1].mean().item() if infos is not None else None,
-                    'validation/alpha_std': infos[1].std().item() if infos is not None else None,
-                    'validation/beta_mean': infos[2].mean().item() if infos is not None else None,
-                    'validation/beta_std': infos[2].std().item() if infos is not None else None,
-                }, step=step)
+        except Exception as e:
+            print(f"Error generating GIF: {e}")
+            continue
+        if hasattr(opts, 'use_wandb') and opts.use_wandb and wandb.run is not None:
+            if os.path.exists(gif_path):
+                wandb.log({"validation/gif": wandb.Video(gif_path, format="gif")}, step=step)
+            
+            wandb.log({
+                'validation/fulfilment': fulfilments.mean().item() if infos is not None else None,
+                'validation/nll_fulfilment': -infos[0].mean().item() if infos is not None else None,
+                'validation/alpha_mean': infos[1].mean().item() if infos is not None else None,
+                'validation/alpha_std': infos[1].std().item() if infos is not None else None,
+                'validation/beta_mean': infos[2].mean().item() if infos is not None else None,
+                'validation/beta_std': infos[2].std().item() if infos is not None else None,
+            }, step=step)
 
-            if i >= opts.val_gif_limit:
-                break
-    except Exception as e:
-        print(f"Error generating or logging GIF: {e}")
-
+        if i >= opts.val_gif_limit:
+            break
 
     return avg_cost
 
@@ -89,8 +127,8 @@ def rollout(model, dataset, opts):
         # do not need backpropogation
         with torch.no_grad():
             cost, ll, pi, veh_list, fulfilments, info_dict = model(move_to(bat, opts.device), return_pi=True)
-            infos = info_dict['inner_info']
-        return (cost.data.cpu(), info_dict)
+            actions = [{'veh': veh_list[i],'node': pi[i],'fulfilment': fulfilments[i]} for i in range(pi.size(0))]
+        return (cost.data.cpu(), info_dict, actions)
 
     # tqdm is a function to show the progress bar
     costs_collection = [
@@ -99,7 +137,11 @@ def rollout(model, dataset, opts):
         in tqdm(DataLoader(dataset, batch_size=opts.eval_batch_size), disable=opts.no_progress_bar)
     ]
 
-    return torch.cat([costs[0] for costs in costs_collection], 0), [costs[1] for costs in costs_collection]
+    actions_collection = []
+    for i in range(len(costs_collection)):
+        actions_collection += costs_collection[i][2]
+
+    return torch.cat([costs[0] for costs in costs_collection], 0), [infos[1] for infos in costs_collection], actions_collection
 
 
 def clip_grad_norms(param_groups, max_norm=math.inf):
@@ -154,17 +196,31 @@ def train_epoch(model, optimizer, baseline, lr_scheduler, epoch, val_dataset, pr
     set_decode_type(model, "sampling")
 
     for batch_id, batch in enumerate(tqdm(training_dataloader, disable=opts.no_progress_bar)):
-        train_batch(
-            model,
-            optimizer,
-            baseline,
-            epoch,
-            batch_id,
-            step,
-            batch,
-            tb_logger,
-            opts
-        )
+        if opts.use_grpo:
+            old_model = copy.deepcopy(model)
+            train_grpo_batch(
+                model,
+                old_model,
+                optimizer,
+                epoch,
+                batch_id,
+                step,
+                batch,
+                tb_logger,
+                opts
+            )
+        else:
+            train_batch(
+                model,
+                optimizer,
+                baseline,
+                epoch,
+                batch_id,
+                step,
+                batch,
+                tb_logger,
+                opts
+            )
         step += 1
 
     epoch_duration = time.time() - start_time
@@ -275,3 +331,73 @@ def train_batch(
                 print(f"Error generating or logging GIF: {e}")
 
 
+def train_grpo_batch(
+    model,
+    old_model,
+    optimizer,
+    epoch,
+    batch_id,
+    step,
+    batch,
+    tb_logger,
+    opts
+):
+    x = move_to(batch, opts.device)
+    batch_size = x['loc'].shape[0]
+
+    # Expand each sample in the batch to group_size (repeat along new axis)
+    # do that for each key in x
+    x_group = {key: x[key].unsqueeze(1).expand(-1, opts.grpo_groupsize, *x[key].shape[1:]) for key in x}  # [B, G, ...]
+    x_group = {key: x_group[key].reshape(batch_size * opts.grpo_groupsize, *x[key].shape[1:]) for key in x}  # [B*G, ...]
+
+    # Get current policy outputs for all group samples
+    cost, log_likelihood, pi, veh_list, fulfilments, info_dict = model(x_group, return_pi=True)  # [B*G]
+    cost = cost.view(batch_size, opts.grpo_groupsize)
+    log_likelihood = log_likelihood.view(batch_size, opts.grpo_groupsize).clamp(min=-20, max=20)
+
+    # Get old policy log probabilities for all group samples (no grad)
+    with torch.no_grad():
+        actions = [{'veh': veh_list[:, i],'node': pi[:, i],'fulfilment': fulfilments[:, i]} for i in range(pi.size(1))]
+        _, old_log_likelihood, _, _, _, _ = old_model(x_group, actions=actions, return_pi=True)
+    old_log_likelihood = old_log_likelihood.view(batch_size, opts.grpo_groupsize).clamp(min=-20, max=20)
+
+    # Group Relative Advantage Estimation
+    reward = -cost
+    group_mean_reward = reward.mean(dim=1, keepdim=True)  # [B, 1]
+    advantage = (reward - group_mean_reward) / (reward.std(dim=1, keepdim=True) + 1e-3)  # [B, G]
+    advantage = advantage.detach()  # important!
+
+    # Compute PPO ratio and surrogate loss
+    ratio = torch.exp(log_likelihood - old_log_likelihood)  # [B, G]
+    surr1 = ratio * advantage
+    surr2 = torch.clamp(ratio, 1 - opts.clip_epsilon, 1 + opts.clip_epsilon) * advantage
+    ppo_loss = -torch.min(surr1, surr2).mean()
+
+    # Positive unbiased KL divergence (Schulman 2020): ref/cur - log(ref/cur) - 1
+    # ref = exp(old_log_likelihood), cur = exp(log_likelihood)
+    ref = torch.exp(old_log_likelihood)
+    cur = torch.exp(log_likelihood)
+    kl_pos = (ref / cur - (old_log_likelihood - log_likelihood) - 1).mean()
+
+    loss = ppo_loss + opts.kl_coef * kl_pos
+
+    optimizer.zero_grad()
+    loss.backward()
+    grad_norms = clip_grad_norms(optimizer.param_groups, opts.max_grad_norm)
+    if torch.isnan(grad_norms[0][0]):
+        print("Gradient norm is NaN, skipping step")
+        return
+    optimizer.step()
+
+    # Logging (minimal, can be expanded)
+    if step % int(opts.log_step) == 0:
+        log_values(cost.flatten(), grad_norms, epoch, batch_id, step,
+                   log_likelihood.flatten(), ppo_loss, 0, None, tb_logger, opts)
+        if hasattr(opts, 'use_wandb') and opts.use_wandb and wandb.run is not None:
+            wandb.log({
+                'training/ppo_loss': ppo_loss.item(),
+                'training/kl_pos': kl_pos.item(),
+                'training/group_mean_reward': group_mean_reward.mean().item(),
+                'training/advantage_mean': advantage.mean().item(),
+                'training/advantage_std': advantage.std().item(),
+            }, step=step)

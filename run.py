@@ -187,7 +187,7 @@ def run(opts):
         print("Resuming after {}".format(epoch_resume))
         opts.epoch_start = epoch_resume + 1
 
-    torch.autograd.set_detect_anomaly(True)
+    # torch.autograd.set_detect_anomaly(True)
 
     if opts.eval_only:
         validate(model, val_dataset, opts, step=opts.steps + 1)

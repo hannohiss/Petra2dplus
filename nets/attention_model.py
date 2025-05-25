@@ -163,7 +163,7 @@ class AttentionModel(nn.Module):
         if temp is not None:  # Do not change temperature if not provided
             self.temp = temp
 
-    def forward(self, input, return_pi=False):
+    def forward(self, input, actions=None, return_pi=False):
         """
         :param input: (batch_size, graph_size, node_dim) input node features or dictionary with multiple tensors
         :param return_pi: whether to return the output sequences, this is optional as it is not compatible with
@@ -173,12 +173,12 @@ class AttentionModel(nn.Module):
         # norm of self.init_embed.weight
         input, node_embedding,node_kv = self.pre_calculate_node(input)
         # input, node_embedding, veh_embedding = self.initial_em(input)
-        ll, pi, veh_list, fulfilments, cost, infos = self._inner(input, node_embedding, node_kv)
+        ll, pi, veh_list, fulfilments, cost, infos = self._inner(input, node_embedding, node_kv, actions=actions)
         if return_pi:
             return cost, ll, pi, veh_list, fulfilments, infos
         return cost, ll
 
-    def _inner(self,input ,node_embeddings,node_kv):
+    def _inner(self,input ,node_embeddings,node_kv,actions=None):
         env = HcvrpEnv(input, scale=(1, 40, 1)) if self.is_hcvrp else PetraEnv(input, opts=self.opts)
         ll,pi,veh_list,fulfilments,infos=[],[],[],[],[]
         step = 0
@@ -191,16 +191,10 @@ class AttentionModel(nn.Module):
             # update vehicle embeddings
             veh_embeddings = self.veh_encoder(node_embeddings,node_kv,env)
             # select action
-            # try:
-            veh, node, fulfilment, log_p, info = self.decoder(veh_embeddings, node_embeddings, mask=env.get_action_mask())
-            # except RuntimeError as e:
-            #     mask = env.get_action_mask()
-            #     finished = env.all_finished()
-            #     raise e
-
+            veh, node, fulfilment, log_p, info = self.decoder(veh_embeddings, node_embeddings, mask=env.get_action_mask(), action=actions[step] if actions is not None else None)
             # update env
             drop = env.update(veh,node,fulfilment)  # --> lets talk about this with fulfilment
-            info.append(drop.unsqueeze(1).detach())
+            info.append(drop.detach())
 
             veh_list.append(veh)
             pi.append(node)
@@ -215,10 +209,10 @@ class AttentionModel(nn.Module):
         pi = torch.stack(pi, 1)  # bs,step
         veh_list = torch.stack(veh_list, 1)  # bs,step
         fulfilments = torch.stack(fulfilments, 1)
-        infos = torch.stack([torch.stack(inner, dim=0).squeeze(-1) for inner in infos], dim=0).permute(1, 2, 0)
-        return ll.sum(1),pi,veh_list,fulfilments,cost,{'inner_info': infos,'cost_info': cost_info}
+        infos_ = torch.stack([torch.stack(inner, dim=0) for inner in infos], dim=0).permute(1, 2, 0)
+        return ll.sum(1),pi,veh_list,fulfilments,cost,{'inner_info': infos_,'cost_info': cost_info}
 
-    def decoder(self,q_em,k_em,mask=None):
+    def decoder(self,q_em,k_em,mask=None,action=None):
         '''
         :param q_em: Q: bs,m,d
         :param k_em: K: bs,n,d
@@ -236,10 +230,13 @@ class AttentionModel(nn.Module):
                 logits[mask] = -math.inf
         logits = logits.reshape(bs,-1) # bs,M*N
         p = logits.softmax(1) # bs,M*N
-        if self.decode_type=='greedy':
-            selected = p.max(1)[1] # bs
+        if action is None:
+            if self.decode_type=='greedy':
+                selected = p.max(1)[1] # bs
+            else:
+                selected = p.multinomial(1).squeeze(1)
         else:
-            selected = p.multinomial(1).squeeze(1)
+            selected = action['veh'] * n + action['node']
         log_p = p[bs_index,selected].log()
         veh,node = selected//n,selected%n
 
@@ -250,24 +247,26 @@ class AttentionModel(nn.Module):
         # Add small epsilon to ensure parameters are strictly gt 1
         eps = 1e-6
         hidden = self.fulfilment_mlp(veh_node_em)
-        alpha = 19*torch.sigmoid(self.fulfilment_mlp_alpha(hidden)) + 1
-        beta = 19*torch.sigmoid(self.fulfilment_mlp_beta(hidden)) + 1
+        alpha = (19*torch.sigmoid(self.fulfilment_mlp_alpha(hidden)) + 1).squeeze(1)
+        beta = (19*torch.sigmoid(self.fulfilment_mlp_beta(hidden)) + 1).squeeze(1)
         p = torch.distributions.Beta(alpha, beta)
         # sample from the beta distribution
-        if self.decode_type=='greedy':
-            fulfilment = p.mean # bs
+        if action is None:
+            if self.decode_type=='greedy':
+                fulfilment = p.mean # bs
+            else:
+                fulfilment = p.sample() # bs
+            fulfilment = torch.clamp(fulfilment, min=eps, max=1.0-eps)        
         else:
-            fulfilment = p.sample() # bs
+            fulfilment = action['fulfilment']
         # Clamp fulfilment to prevent numerical issues at the boundaries
-        fulfilment = torch.clamp(fulfilment, min=eps, max=1.0-eps)
         lop_p_fulfilment = p.log_prob(fulfilment) # bs
-        # Prevent NaN in log probabilities by clamping
         lop_p_fulfilment = torch.clamp(lop_p_fulfilment, min=-1e8, max=1e8)
-        fulfilment = fulfilment.squeeze(1)
-        
-        log_p = log_p + lop_p_fulfilment
+        fulfilment = fulfilment
+
+        log_p_ = log_p + lop_p_fulfilment
         info = [lop_p_fulfilment.detach(), alpha.detach(), beta.detach()]
-        return veh,node,fulfilment,log_p, info
+        return veh,node,fulfilment,log_p_,info
     
     def veh_encoder(self,node_embeddings,node_kv,env):
         veh_embeddings = self.veh_encoder_mlp(env.get_all_veh_state())
