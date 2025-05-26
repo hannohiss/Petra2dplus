@@ -33,7 +33,13 @@ def validate(model, dataset, opts, step=0):
     episode_lengths = [action['node'].size(0) for action in actions]
     min_episode_len = min(episode_lengths)
     max_episode_len = max(episode_lengths)
-    assert min_episode_len == max_episode_len, "All episode lengths must be the same, this might be due to batching (try increasing batch size)"
+    # make all episode lengths max_episode_len by padding with zeros
+    for action in actions:
+        if action['node'].size(0) < max_episode_len:
+            action['node'] = torch.cat([action['node'], torch.zeros(max_episode_len - action['node'].size(0))], dim=0)
+            action['veh'] = torch.cat([action['veh'], torch.zeros(max_episode_len - action['veh'].size(0))], dim=0)
+            action['fulfilment'] = torch.cat([action['fulfilment'], torch.zeros(max_episode_len - action['fulfilment'].size(0))], dim=0)
+    # assert min_episode_len == max_episode_len, "All episode lengths must be the same, this might be due to batching (try increasing batch size)"
     node_actions = torch.stack([action['node'] for action in actions], dim=0)
     veh_actions = torch.stack([action['veh'] for action in actions], dim=0)
     fulfilment_actions = torch.stack([action['fulfilment'] for action in actions], dim=0)
@@ -383,10 +389,10 @@ def train_grpo_batch(
 
     optimizer.zero_grad()
     loss.backward()
-    grad_norms = clip_grad_norms(optimizer.param_groups, opts.max_grad_norm)
-    if torch.isnan(grad_norms[0][0]):
-        print("Gradient norm is NaN, skipping step")
-        return
+    grad_norms = clip_grad_norms(optimizer.param_groups)  # no clipping
+    # if torch.isnan(grad_norms[0][0]):
+    #     print("Gradient norm is NaN, skipping step")
+    #     return
     optimizer.step()
 
     # Logging (minimal, can be expanded)

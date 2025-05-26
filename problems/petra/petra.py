@@ -22,6 +22,7 @@ class PetraEnv:
         self.min_critical_time = opts.min_critical_time
         self.batch_size = input["loc"].shape[0]
         self.bs_index = torch.arange(self.batch_size)
+        self.depot_idx = 0
         self.step = 0
         self.max_time = opts.max_time
         self.cost_per_km = opts.cost_per_km
@@ -31,6 +32,7 @@ class PetraEnv:
         self.critical_time_cost_beta = opts.critical_time_cost_beta
         self.petra_reward = opts.petra_reward
         self.fulfilment = opts.fulfilment
+        self.fulfilment_threshold = opts.fulfilment_threshold
         self.replenishment_time_per_unit = opts.replenishment_time_per_unit
         self.replenishment_delay = opts.replenishment_delay
         self.reward_per_unit_fuel = opts.reward_per_unit_fuel
@@ -45,6 +47,7 @@ class PetraEnv:
         self.initial_veh_state(input["capacity"])
         self.matrix_min = input["matrix_min"]
         self.matrix_km = input["matrix_km"]
+        self.vehicle_done = torch.zeros((self.batch_size, self.veh_num), dtype=torch.bool)
 
     def initial_node_state(self, loc, demand, depot, node_critical_time, node_consumption_rate):
         """
@@ -63,11 +66,12 @@ class PetraEnv:
         self.N = loc.shape[1] # + 1
         self.coords = loc
         self.demand = demand
+        self.demand[self.bs_index, self.depot_idx] = 0.0 # depot has no demand
         self.demand_satisfied = torch.zeros_like(demand)
         self.node_critical_time = node_critical_time
         self.node_consumption_rate = node_consumption_rate
         self.visited = torch.zeros_like(self.demand).bool()
-        self.visited[:, 0] = True
+        self.visited[:, self.depot_idx] = True
 
     def all_finished(self):
         return self.finished().all()
@@ -97,6 +101,7 @@ class PetraEnv:
             | (all_vehicles_at_depot & all_vehicles_no_time) 
             # | (all_vehicles_at_depot & all_vehicles_moved)
             | (all_vehicles_at_depot & all_nodes_visited)
+            | self.vehicle_done
         )
         return all_vehicles_finished.all(-1)
     
@@ -124,6 +129,7 @@ class PetraEnv:
         self.veh_time = torch.zeros_like(capacity)
         self.veh_cur_node = torch.zeros_like(capacity).long()
         self.veh_used_capacity = torch.zeros_like(capacity)
+        self.veh_total_used_capacity = torch.zeros_like(capacity)
         self.veh_cost = torch.zeros_like(capacity)
         self.veh_index = torch.arange(self.veh_num)
 
@@ -148,11 +154,10 @@ class PetraEnv:
         """
         # select node must be unvisited, except depot
         assert not self.visited[self.bs_index, next_node][
-            next_node != 0
+            next_node != self.depot_idx
         ].any(), "Wrong solution: node has been selected !"
 
         # LAST LOCATION
-        depot_mask = next_node == 0
         last_node = self.veh_cur_node[self.bs_index, veh]
 
         # FULFILMENT
@@ -163,6 +168,7 @@ class PetraEnv:
             drop = self.veh_capacity[self.bs_index, veh] * fulfilment
         else:
             raise ValueError("Unknown fulfilment type: {}".format(self.fulfilment))    
+        
         drop = torch.min(
             # only drop what fulfilment predicts
             drop,
@@ -182,16 +188,55 @@ class PetraEnv:
         # self.veh_time[self.bs_index, veh] += travel_time + torch.where(depot_mask, torch.zeros_like(drop_time), drop_time)
         refill_time = torch.zeros_like(drop_time) # default
 
+        ##### MULTI-TRIP #####
         # Calculate refill time based on how much needs to be refilled
-        if self.multi_trip and depot_mask.any():
-            refill_amount = self.veh_used_capacity[self.bs_index, veh][depot_mask]
-            refill_time[depot_mask] = refill_amount * self.replenishment_time_per_unit + self.replenishment_delay
-            self.veh_used_capacity[self.bs_index, veh][depot_mask] = 0
+        allow_refill = (
+            ~self.vehicle_done[self.bs_index, veh]
+            & (self.veh_time[self.bs_index, veh] + travel_time < self.max_time - self.replenishment_delay - self.veh_used_capacity[self.bs_index, veh] * self.replenishment_time_per_unit) # refill only if vehicle has time left
+            & (next_node == self.depot_idx) # refill only at depot
+            & (self.veh_used_capacity[self.bs_index, veh] > 0) # refill only if vehicle has used capacity
+        )
+        do_refill = (fulfilment > self.fulfilment_threshold) # refill only if fulfilment is above threshold
+        allow_and_do = allow_refill & do_refill
+        if self.multi_trip and allow_and_do.any():
+            # refill_amount = self.veh_used_capacity[self.bs_index, veh][allow_and_do]
+            # refill_time[allow_and_do] = refill_amount * self.replenishment_time_per_unit + self.replenishment_delay
+            # self.veh_total_used_capacity[self.bs_index, veh][allow_and_do] += refill_amount
+            # self.veh_used_capacity[self.bs_index, veh][allow_and_do] = 0
+            refill_amount = torch.where(
+                allow_and_do,
+                self.veh_used_capacity[self.bs_index, veh],
+                torch.zeros_like(self.veh_used_capacity[self.bs_index, veh])
+            )
+            refill_time = torch.where(
+                allow_and_do,
+                refill_amount * self.replenishment_time_per_unit + self.replenishment_delay,
+                refill_time
+            )
+            self.veh_total_used_capacity[self.bs_index, veh] = torch.where(
+                allow_and_do,
+                self.veh_total_used_capacity[self.bs_index, veh] + refill_amount,
+                self.veh_total_used_capacity[self.bs_index, veh]
+            )
+            self.veh_used_capacity[self.bs_index, veh] = torch.where(
+                allow_and_do,
+                torch.zeros_like(self.veh_used_capacity[self.bs_index, veh]),
+                self.veh_used_capacity[self.bs_index, veh]
+            )
+        else:
+            allow_and_do = torch.zeros_like(drop_time, dtype=torch.bool)
+        if self.multi_trip:
+            # mark vehicle as done if it didnt want to refill and is at depot
+            self.vehicle_done[self.bs_index, veh] = self.vehicle_done[self.bs_index, veh] | (allow_refill & ~do_refill)
+        ##### MULTI-TRIP #####
+
+
         # Add travel time plus either refill time (at depot) or drop time (at customer)
-        self.veh_time[self.bs_index, veh] += travel_time + torch.where(depot_mask, refill_time, drop_time)
+        total_time = travel_time + torch.where(allow_and_do, refill_time, drop_time)
+        self.veh_time[self.bs_index, veh] += total_time
 
         # COST
-        self.veh_cost[self.bs_index, veh] += (travel_time + torch.where(depot_mask, refill_time, drop_time)) * self.cost_per_min
+        self.veh_cost[self.bs_index, veh] += total_time * self.cost_per_min
         self.veh_cost[self.bs_index, veh] += self.matrix_km[self.bs_index, last_node, next_node] * self.cost_per_km
 
         # NEW LOCATION
@@ -214,7 +259,7 @@ class PetraEnv:
         """
         # 1. Visited nodes
         visited_mask = self.visited.clone()
-        visited_mask[:, 0] = False  # depot is not visited
+        visited_mask[:, self.depot_idx] = False  # depot is not visited
         visited_mask = (
             visited_mask.unsqueeze(1)
             .expand(self.batch_size, self.veh_num, self.N)
@@ -251,40 +296,40 @@ class PetraEnv:
         veh_time = (self.veh_time > self.max_time)
         veh_time_mask = veh_time.unsqueeze(-1)
 
+        # 4. Multi-trip
+        veh_done_mask = self.vehicle_done.unsqueeze(-1)
+        veh_done_mask = veh_done_mask.expand(self.batch_size, self.veh_num, self.N)
+
         # SPECIAL CASE
         mask = torch.ones_like(visited_mask, dtype=torch.bool)
         # because in batch processing the finished task will have a full mask and raise an error
-        mask[self.finished(),0,0] = False  # (veh 0, stays at depot)
+        mask[self.finished(),0,self.depot_idx] = False  # (veh 0, stays at depot)
         # allow depot for empty vehicles, only if they are not at depot
-        batch_idx, row_idx = ((self.veh_cur_node != 0) & empty_veh).nonzero(as_tuple=True)
-        mask[batch_idx, row_idx, 0] = False
+        batch_idx, row_idx = ((self.veh_cur_node != self.depot_idx) & empty_veh).nonzero(as_tuple=True)
+        mask[batch_idx, row_idx, self.depot_idx] = False
         # if vehicle is not at depot and has no time left, it can violate the time constraint
-        batch_idx, row_idx = ((self.veh_cur_node != 0) & veh_time).nonzero(as_tuple=True)
-        mask[batch_idx, row_idx, 0] = False
+        batch_idx, row_idx = ((self.veh_cur_node != self.depot_idx) & veh_time).nonzero(as_tuple=True)
+        mask[batch_idx, row_idx, self.depot_idx] = False
 
         # 4. Combine all masks
-        final_mask = mask & (visited_mask | empty_veh_mask | veh_time_mask)
+        final_mask = mask & (visited_mask | empty_veh_mask | veh_time_mask | veh_done_mask)
         
         return final_mask
 
-    def all_go_depot(self):
-        """
-        DEPRECATED
-        All vehicles go back to the depot.
-        """
-        veh_list = torch.arange(self.veh_num)
-        depot = torch.zeros_like(self.bs_index)
-        for i in veh_list:
-            self.update(i.expand(self.batch_size), depot)
-            self.veh_time[self.bs_index, i] += self.matrix_min[
-                self.bs_index, self.veh_cur_node, 0
-            ]
-            self.veh_cost[self.bs_index, i] += (
-                self.matrix_min[self.bs_index, self.veh_cur_node, 0] * self.cost_per_min
-            ) + (self.matrix_km[self.bs_index, self.veh_cur_node, 0] * self.cost_per_km)
+    def finish_episode(self):
+        """finish all episodes"""
+        if self.multi_trip:
+            self.veh_total_used_capacity += self.veh_used_capacity
+        else:
+            self.veh_total_used_capacity = self.veh_used_capacity
+
+        # overtime is added once more
+        self.veh_cost += (self.veh_time - self.max_time) * self.cost_per_min
+
 
     def get_cost(self,obj):
         """Returns: torch.Tensor: Cost of the current solution."""
+        self.finish_episode()
         
         if self.petra_reward == "consumption_reward":
             node_cost = (self.demand_satisfied * self.node_consumption_rate)
@@ -295,31 +340,39 @@ class PetraEnv:
         else:
             node_cost = torch.zeros_like(self.demand_satisfied)
 
+        veh_cost = self.veh_cost.sum(-1)
         if obj == "min-sum":
-            veh_cost = self.veh_cost.sum(-1)
             node_cost = node_cost.sum(-1)
         elif obj == "min-max":
             # minimize max cost
-            veh_cost = self.veh_cost.max(-1)
-            # maximize min reward
-            node_cost = node_cost.min(-1)
+            node_cost = node_cost.max(-1)
         else:
             raise ValueError("Unknown objective function: {}".format(obj))
         
-        # we dont want vehicles to be non-empty at depot
-        depot_cost = (self.veh_capacity - self.veh_used_capacity).sum(-1)
+        if not self.multi_trip:
+            # we dont want vehicles to be non-empty at depot
+            depot_cost = (self.veh_capacity - self.veh_used_capacity).sum(-1)
+        else:
+            depot_cost = torch.zeros_like(veh_cost)
 
         # revenue due to fulfilled demand
         revenue = self.demand_satisfied.sum(-1) * self.reward_per_unit_fuel
+        
+        # Multi-trip (penalize time not used)
+        if self.multi_trip:
+            lazy_cost = 100/(1+torch.exp(-0.02*(self.max_time - self.veh_time - self.max_time/2))).sum(-1)
+        else:
+            lazy_cost = torch.zeros_like(veh_cost)
 
         # cost vs reward
-        cost = veh_cost + depot_cost + node_cost * self.consumption_reward - revenue
+        cost = veh_cost + depot_cost + node_cost * self.consumption_reward - revenue + lazy_cost
 
         return cost, {
-            'node_cost': (node_cost*self.consumption_reward).detach(),
+            'node_cost': node_cost.detach(),
             'depot_cost': depot_cost.detach(),
             'veh_cost': veh_cost.detach(),
-            'revenue': revenue.detach()
+            'revenue': revenue.detach(),
+            'lazy_cost': lazy_cost.detach()
         }
 
     @classmethod

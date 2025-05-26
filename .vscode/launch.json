@@ -63,12 +63,13 @@
                 "--problem",
                 "petra",
                 "--use_wandb",
-                "--baseline", 
-                "rollout",
+                "--use_grpo",
+                "--grpo_groupsize",
+                "16",
                 "--batch_size",
-                "512",
+                "32", // 16 * 32 = 512
                 "--epoch_size",
-                "2048", // 512 * 512
+                "8192", // 512 * 16
                 "--graph_size",
                 "15",
                 "--veh_num",
@@ -82,7 +83,7 @@
                 "--n_heads",
                 "4",
                 "--consumption_reward",
-                "1",
+                "2",
                 "--fulfilment",
                 "node_demand",
                 "--seed",
@@ -99,14 +100,15 @@
             "console": "integratedTerminal",
             "args": [
                 "--load_path",
+                // "outputs/petra_v7_25/run_20250526T000506/final_model_epoch_50.pt",
                 "outputs/petra_v3_15/run_20250524T183200/final_model_epoch_50.pt",
                 "--eval_only",
                 "--problem",
                 "petra",
                 "--graph_size",
-                "15",
+                "100",
                 "--veh_num",
-                "3",
+                "10",
                 "--embedding_dim",
                 "64",
                 "--hidden_dim",
@@ -119,7 +121,7 @@
                 "node_demand",
                 "--val_gif_limit",
                 "10",
-                // "--use_wandb",
+                "--use_wandb",
             ]
         },
         {
@@ -165,6 +167,45 @@
                 "32", // 16 * 32 = 512
                 "--epoch_size",
                 "8192", // 512 * 16
+            ]
+        },
+        {
+            "name": "Debugger: Current File (grpo, multi-trip)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--problem",
+                "petra",
+                "--use_wandb",
+                "--graph_size",
+                "15",
+                "--veh_num",
+                "3",
+                "--embedding_dim",
+                "64",
+                "--hidden_dim",
+                "64",
+                "--n_encode_layers",
+                "4",
+                "--n_heads",
+                "4",
+                "--consumption_reward",
+                "1",
+                "--fulfilment",
+                "node_demand",
+                "--seed",
+                "123456",
+                "--use_grpo",
+                "--grpo_groupsize",
+                "16",
+                "--batch_size",
+                "32", // 16 * 32 = 512
+                "--epoch_size",
+                "2048", // 512 * 4
+                // PETRA
+                "--multi_trip",
             ]
         }
     ]

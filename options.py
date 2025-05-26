@@ -36,7 +36,7 @@ def get_options(args=None):
     # Training
     parser.add_argument('--use_grpo', action='store_true', help='Use GRPO')
     parser.add_argument('--grpo_groupsize', type=int, default=4, help='Group size for GRPO')
-    parser.add_argument('--clip_epsilon', type=float, default=0.2, help='Clip epsilon for GRPO')
+    parser.add_argument('--clip_epsilon', type=float, default=0.1, help='Clip epsilon for GRPO')
     parser.add_argument('--kl_coef', type=float, default=0.01, help='KL coefficient for GRPO')
     parser.add_argument('--lr_model', type=float, default=1e-4, help="Set the learning rate for the actor network")
     parser.add_argument('--lr_critic', type=float, default=1e-4, help="Set the learning rate for the critic network")
@@ -100,7 +100,7 @@ def get_options(args=None):
     # critical time cost: https://www.desmos.com/calculator/wt8y7q0cxr
     parser.add_argument('--critical_time_cost_alpha', type=float, default=1500,
                         help='Abs weight for the critical time cost')
-    parser.add_argument('--critical_time_cost_beta', type=float, default=0.8,
+    parser.add_argument('--critical_time_cost_beta', type=float, default=0.5,  # 0.8
                         help='Exp weight for the critical time cost ')
     parser.add_argument('--fulfilment', type=str, default='node_demand',
                         help='Fulfilment type for the problem, "node_demand" or "vehicle_capacity"')
@@ -112,6 +112,8 @@ def get_options(args=None):
                         help='Reward per unit of fuel for the problem')
     parser.add_argument('--multi_trip', action='store_true',
                         help='Enable multi-trip for the problem')
+    parser.add_argument('--fulfilment_threshold', type=float, default=0.5,
+                        help='Threshold for the fulfilment of the problem')
     
     # Additional Petra parameters
     parser.add_argument('--demand_max', type=float, default=80_000, 
@@ -132,11 +134,11 @@ def get_options(args=None):
                         help='Mean of time-to-refill distribution')
     parser.add_argument('--ttr_sigma', type=float, default=0.5,
                         help='Standard deviation of time-to-refill distribution')
-    parser.add_argument('--km_mu', type=float, default=90,
+    parser.add_argument('--km_mu', type=float, default=80,
                         help='Mean of distance distribution')
     parser.add_argument('--km_sigma', type=float, default=0.1,
                         help='Standard deviation of distance distribution')
-    parser.add_argument('--min_mu', type=float, default=90,
+    parser.add_argument('--min_mu', type=float, default=50,
                         help='Mean of time distribution in minutes')
     parser.add_argument('--min_sigma', type=float, default=0.05,
                         help='Standard deviation of time distribution')
@@ -163,7 +165,7 @@ def get_options(args=None):
         opts.bl_warmup_epochs = 1 if opts.baseline == 'rollout' else 0
     assert (opts.bl_warmup_epochs == 0) or (opts.baseline == 'rollout')
     assert opts.epoch_size % opts.batch_size == 0, "Epoch size must be integer multiple of batch size!"
-    assert 0 <= opts.consumption_reward <= 1, "Cost vs reward ratio must be between 0 and 1!"
+    assert opts.consumption_reward >= 0, "Cost vs reward ratio must be non-negative!"
     assert opts.fulfilment in ['node_demand', 'vehicle_capacity'], \
         "Fulfilment type must be either 'node_demand' or 'vehicle_capacity'!"
     assert not opts.use_data_adapter, "Data adapter is not supported for PETRA" 

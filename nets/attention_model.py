@@ -247,8 +247,8 @@ class AttentionModel(nn.Module):
         # Add small epsilon to ensure parameters are strictly gt 1
         eps = 1e-6
         hidden = self.fulfilment_mlp(veh_node_em)
-        alpha = (19*torch.sigmoid(self.fulfilment_mlp_alpha(hidden)) + 1).squeeze(1)
-        beta = (19*torch.sigmoid(self.fulfilment_mlp_beta(hidden)) + 1).squeeze(1)
+        alpha = (5*torch.sigmoid(self.fulfilment_mlp_alpha(hidden)) + 1).squeeze(1)
+        beta = (5*torch.sigmoid(self.fulfilment_mlp_beta(hidden)) + 1).squeeze(1)
         p = torch.distributions.Beta(alpha, beta)
         # sample from the beta distribution
         if action is None:
