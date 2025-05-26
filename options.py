@@ -114,6 +114,7 @@ def get_options(args=None):
                         help='Enable multi-trip for the problem')
     parser.add_argument('--fulfilment_threshold', type=float, default=0.5,
                         help='Threshold for the fulfilment of the problem')
+    parser.add_argument('--test_petra', action='store_true', help='Set this value to test the PETRA problem')
     
     # Additional Petra parameters
     parser.add_argument('--demand_max', type=float, default=80_000, 
@@ -168,6 +169,6 @@ def get_options(args=None):
     assert opts.consumption_reward >= 0, "Cost vs reward ratio must be non-negative!"
     assert opts.fulfilment in ['node_demand', 'vehicle_capacity'], \
         "Fulfilment type must be either 'node_demand' or 'vehicle_capacity'!"
-    assert not opts.use_data_adapter, "Data adapter is not supported for PETRA" 
     assert (opts.use_grpo and opts.baseline is None) or not opts.use_grpo, "GRPO is only supported with no baseline"
+    assert (opts.test_petra and opts.use_data_adapter) or not opts.test_petra, "Data adapter is only supported for PETRA"
     return opts

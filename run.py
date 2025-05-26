@@ -189,7 +189,12 @@ def run(opts):
 
     # torch.autograd.set_detect_anomaly(True)
 
-    if opts.eval_only:
+    if opts.test_petra and opts.use_data_adapter:
+        generator, vehicles_ = generator_for_petra2dplus(opts)
+        opts.vehicles = vehicles_
+        test_dataset = problem.make_dataset(num_samples=opts.val_size)
+        validate(model, test_dataset, opts, step=opts.steps + 1)
+    elif opts.eval_only:
         validate(model, val_dataset, opts, step=opts.steps + 1)
     else:
         print("Start training...")

@@ -207,6 +207,41 @@
                 // PETRA
                 "--multi_trip",
             ]
+        },
+        {
+            "name": "Debugger: Current File (test petra)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--load_path",
+                // "outputs/petra_v7_25/run_20250526T000506/final_model_epoch_50.pt",
+                "outputs/petra_v3_15/run_20250524T183200/final_model_epoch_50.pt",
+                "--problem",
+                "petra",
+                "--test_petra",
+                "--use_data_adapter",
+                "--val_size",
+                "100",
+                // "--graph_size",
+                // "100",
+                // "--veh_num",
+                // "10",
+                "--embedding_dim",
+                "64",
+                "--hidden_dim",
+                "64",
+                "--n_encode_layers",
+                "4",
+                "--n_heads",
+                "4",
+                "--fulfilment",
+                "node_demand",
+                "--val_gif_limit",
+                "10",
+                // "--use_wandb",
+            ]
         }
     ]
 }
