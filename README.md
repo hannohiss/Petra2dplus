@@ -1,5 +1,7 @@
 # Petra2dplus
 
+![Petra2dplus](./assets/example.gif)
+
 **Petra2dplus** is a research codebase for solving the petrol station replenishment problem (Petra) using deep reinforcement learning with attention-based neural architectures. The code is supporting both synthetic and real-world data, and integrates with Weights & Biases (wandb) for experiment tracking.
 
 ---
