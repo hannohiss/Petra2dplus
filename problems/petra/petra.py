@@ -324,7 +324,7 @@ class PetraEnv:
             self.veh_total_used_capacity = self.veh_used_capacity
 
         # overtime is added once more
-        self.veh_cost += (self.veh_time - self.max_time) * self.cost_per_min
+        self.veh_cost += (self.veh_time - self.max_time).clamp(min=0) * self.cost_per_min
 
 
     def get_cost(self,obj):
@@ -342,10 +342,10 @@ class PetraEnv:
 
         veh_cost = self.veh_cost.sum(-1)
         if obj == "min-sum":
-            node_cost = node_cost.sum(-1)
+            ttr_cost = node_cost.sum(-1)
         elif obj == "min-max":
             # minimize max cost
-            node_cost = node_cost.max(-1)
+            ttr_cost = node_cost.max(-1).values
         else:
             raise ValueError("Unknown objective function: {}".format(obj))
         
@@ -365,14 +365,15 @@ class PetraEnv:
             lazy_cost = torch.zeros_like(veh_cost)
 
         # cost vs reward
-        cost = veh_cost + depot_cost + node_cost * self.consumption_reward - revenue + lazy_cost
+        cost = veh_cost + depot_cost + ttr_cost * self.consumption_reward - revenue + lazy_cost
 
         return cost, {
-            'node_cost': node_cost.detach(),
+            'node_cost': node_cost.sum(-1).detach(),
             'depot_cost': depot_cost.detach(),
             'veh_cost': veh_cost.detach(),
             'revenue': revenue.detach(),
-            'lazy_cost': lazy_cost.detach()
+            'lazy_cost': lazy_cost.detach(),
+            'total_cost': veh_cost + depot_cost + node_cost.sum(-1) * self.consumption_reward - revenue + lazy_cost,
         }
 
     @classmethod

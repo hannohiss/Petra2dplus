@@ -100,11 +100,11 @@ def validate(model, dataset, opts, step=0):
         with torch.no_grad():
             cost, log_likelihood, pi, veh_list, fulfilments, info_dict = model(bat, return_pi=True)
             infos = info_dict['inner_info']
-        try:
-            gif_path = make_gif(bat, pi, veh_list, fulfilments, infos, opts, step, suffix=f"_val_{i}")
-        except Exception as e:
-            print(f"Error generating GIF: {e}")
-            continue
+        # try:
+        gif_path = make_gif(bat, pi, veh_list, fulfilments, infos, opts, step, suffix=f"_val_{i}")
+        # except Exception as e:
+        #     print(f"Error generating GIF: {e}")
+        #     continue
         if hasattr(opts, 'use_wandb') and opts.use_wandb and wandb.run is not None:
             if os.path.exists(gif_path):
                 wandb.log({"validation/gif": wandb.Video(gif_path, format="gif")}, step=step)

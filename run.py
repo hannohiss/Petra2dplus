@@ -172,6 +172,8 @@ def run(opts):
     lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     # Start the actual training loop
+    # fix the seed again for the validation
+    torch.manual_seed(opts.seed)
     val_dataset = problem.make_dataset(
         size=opts.graph_size, veh_num=opts.veh_num, num_samples=opts.val_size, filename=opts.val_dataset, distribution=opts.data_distribution)
 

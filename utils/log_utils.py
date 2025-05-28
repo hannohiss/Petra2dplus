@@ -1,5 +1,6 @@
 import os
 import imageio
+from matplotlib.patches import Patch
 import torch
 import wandb
 import matplotlib.pyplot as plt
@@ -124,9 +125,16 @@ def render(
     # Create GIF output directory
     gif_dir = ensure_gif_dir(opts)
 
+    # _, ax = plt.subplots(dpi=500, figsize=(12, 12))
     _, ax = plt.subplots(dpi=100, figsize=(12, 12))
 
-    # Plot depot
+    legend_elements = []
+
+    ### Subtitle for nodes
+    subtitle1 = Patch(facecolor='none', edgecolor='white', label='Nodes:')  # Section title (will look like a blank box)
+    legend_elements.append(subtitle1)
+
+    ### Plot depot
     depot_idx = 0
     ax.scatter(
         locs[depot_idx, 0],
@@ -141,6 +149,51 @@ def render(
     )
 
     scale_demands = demands.max()
+    ax.scatter(
+        -1,
+        -1,
+        edgecolors="green",
+        facecolors="green",
+        s=10,
+        linewidths=2,
+        marker="o",
+        alpha=1,
+        zorder=50,
+        label="Low Demand",
+    )
+    ax.scatter(
+        -1,
+        -1,
+        edgecolors="green",
+        facecolors="green",
+        s=50,
+        linewidths=2,
+        marker="o",
+        alpha=1,
+        zorder=50,
+        label="Medium Demand",
+    )
+    ax.scatter(
+        -1,
+        -1,
+        edgecolors="green",
+        facecolors="green",
+        s=100,
+        linewidths=2,
+        marker="o",
+        alpha=1,
+        zorder=50,
+        label="High Demand",
+    )
+    # where some data has already been plotted to ax
+    handles, labels = ax.get_legend_handles_labels()
+    remove_handles = len(handles)
+    legend_elements.extend(handles)
+
+    ### Subtitle for Vehicles
+    subtitle2 = Patch(facecolor='none', edgecolor='white', label='Vehicles:')  # Section title
+    legend_elements.append(subtitle2)
+
     # Plot fuel stations
     for node_idx in range(1, locs.shape[0]):
         loc = locs[node_idx]
@@ -179,13 +232,27 @@ def render(
             s=200,
             linewidths=2,
             marker="_",
-            label=f"{str(opts.vehicles[i])}",
+            label=f"Vehicle {i} - {opts.vehicles[i]['load']} l",
         )
+
+    ax = draw_pie(
+        [0.6, 0.4],
+        -1,
+        -1,
+        size=100,
+        ax=ax,
+        alpha=0.5,
+        label="%-Dropped",
+    )
+
+    handles, labels = ax.get_legend_handles_labels()
+    legend_elements.extend(handles[remove_handles:])
 
     ax.set_xlim(-0.05, 1.05)
     ax.set_ylim(-0.05, 1.05)
     # Add legend
-    ax.legend()
+    ax.legend(handles=legend_elements, loc='upper left', title="Legend")
+    # ax.legend(loc='upper left', title="Legend")
 
     # Remove the ticks
     ax.set_xticks([])
@@ -236,6 +303,12 @@ def render(
             plt.savefig(filename)
             images.append(imageio.imread(filename))
 
+    # ADDITIONAL SAVE
+    text = "GRPO" if opts.use_grpo else "Rollout"
+    ax.set_title(f"Validation Rollout - {text}", fontsize=16)
+    filename = os.path.join(gif_dir, f"validation_rollout_{step:04d}_{suffix}.png")
+    plt.savefig(filename)
+
     # Create a unique gif filename with absolute path
     gif_filename = f"arrows_{step:04d}_{suffix}.gif"
     gif_path = os.path.join(gif_dir, gif_filename)
@@ -260,6 +333,7 @@ def draw_pie(
         size,
         ax,
         alpha=0.5,
+        label=None,
     ):
     assert ax is not None, "ax must be provided"
 
@@ -282,6 +356,6 @@ def draw_pie(
 
         xy = np.column_stack([x, y])
 
-        ax.scatter([xpos], [ypos], marker=xy, s=size, color=colors[idx], zorder=150, alpha=alphas[idx])
+        ax.scatter([xpos], [ypos], marker=xy, s=size, color=colors[idx], zorder=150, alpha=alphas[idx], label=label if idx == 0 else None)
 
     return ax
