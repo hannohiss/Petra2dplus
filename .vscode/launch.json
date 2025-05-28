@@ -102,13 +102,16 @@
                 "--load_path",
                 // "outputs/petra_v7_25/run_20250526T000506/final_model_epoch_50.pt",
                 "outputs/petra_v3_15/run_20250524T183200/final_model_epoch_50.pt",
+                "--seed",
+                "0",
                 "--eval_only",
+                "--use_grpo",
                 "--problem",
                 "petra",
                 "--graph_size",
-                "100",
+                "15",
                 "--veh_num",
-                "10",
+                "3",
                 "--embedding_dim",
                 "64",
                 "--hidden_dim",
@@ -120,12 +123,12 @@
                 "--fulfilment",
                 "node_demand",
                 "--val_gif_limit",
-                "10",
+                "20",
                 "--use_wandb",
             ]
         },
         {
-            "name": "Debugger: Current File (grpo vs rollout reinforce)",
+            "name": "Debugger: Current File (grpo vs rollout reinforce vs min-max)",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
@@ -146,8 +149,6 @@
                 "4",
                 "--n_heads",
                 "4",
-                "--consumption_reward",
-                "1",
                 "--fulfilment",
                 "node_demand",
                 "--seed",
@@ -167,6 +168,11 @@
                 "32", // 16 * 32 = 512
                 "--epoch_size",
                 "8192", // 512 * 16
+                // Min-max
+                // "--obj",
+                // "min-max",
+                "--consumption_reward",
+                "4",
             ]
         },
         {
