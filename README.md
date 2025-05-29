@@ -6,20 +6,6 @@
 
 ---
 
-## Table of Contents
-
-- [Overview](#overview)
-- [Installation](#installation)
-- [Project Structure](#project-structure)
-- [Usage](#usage)
-  - [Training](#training)
-  - [Evaluation](#evaluation)
-- [Petra Problem Details](#petra-problem-details)
-- [Extending the Codebase](#extending-the-codebase)
-- [License](#license)
-
----
-
 ## Overview
 
 This repository implements a deep RL approach to the **Petra** problem, where the goal is to optimize the replenishment of petrol stations using a fleet of vehicles under various constraints (capacity, time, cost, etc.). The codebase is modular and supports the Petra problem.
@@ -88,7 +74,7 @@ Petra2dplus/
 To train a model on the Petra problem:
 
 ```bash
-pixi run python run.py --problem petra --graph_size 20 --veh_num 3 --n_epochs 50 --use_wandb --use_grpo
+python run.py --problem petra --graph_size 20 --veh_num 3 --n_epochs 50 --use_wandb --use_grpo
 ```
 
 **Key options:**
@@ -99,18 +85,14 @@ pixi run python run.py --problem petra --graph_size 20 --veh_num 3 --n_epochs 50
 - `--use_wandb`: Enable wandb logging
 - `--use_grpo`: Enable GRPO training
 
-All options are defined in `options.py` and can be listed with:
-```bash
-python run.py --help
-```
-or check the launch.json for configurations.
+All options are defined in `options.py`. Also check the `launch.json` for configurations.
 
 ### Evaluation
 
 To evaluate a trained model:
 
 ```bash
-pixi run python eval.py --val_size 1000 --eval_batch_size 256
+python eval.py --val_size 1000 --eval_batch_size 256
 ```
 
 You can also use the `--data_adapter` flag to evaluate on real-world data. (not in this repo)
@@ -128,22 +110,6 @@ The **Petra** problem is a real-world inspired vehicle routing task where the ag
 - Multi-trip and time window support
 - Cost and reward functions configurable (see `options.py`)
 - See `problems/petra/help.md` for more details on actions and episode termination.
-
----
-
-## Extending the Codebase
-
-- **Add new problems:** Implement a new environment in `problems/` and update `load_problem` in `utils/`. Eg. Petra with more constraints 
-closer to the real-world problem.
-- **Custom models:** Add new architectures in `nets/` and update model selection in `run.py`.
-- **Baselines:** Implement new baselines in `reinforce_baselines.py`.
-- **Data adapters:** Integrate new data sources via `src/`.
-
----
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
